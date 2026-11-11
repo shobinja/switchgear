@@ -120,14 +120,14 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
   const LP = noc * 2;
   let CP = 1;
 
-  if (prps === "Metering") {
+  if (prps === "METERING") {
     CP = 1;
     if (iCP) CP += 1;
     tags["CT11"] = tags["CT1"]; tags["CT21"] = tags["CT2"]; tags["CT31"] = tags["CT3"]; tags["CT41"] = tags["CT4"];
     tags["Rp11"] = "-"; tags["Rp21"] = "-"; tags["Rp31"] = "-"; tags["Rp41"] = "-";
     tags["Yp11"] = "-"; tags["Yp21"] = "-"; tags["Yp31"] = "-"; tags["Yp41"] = "-";
     tags["Bp11"] = "-"; tags["Bp21"] = "-"; tags["Bp31"] = "-"; tags["Bp41"] = "-";
-  } else if (prps === "Protection") {
+  } else if (prps === "PROTECTION") {
     CP = noc + 1;
     if (iCP) CP += 1;
     tags["CT11"] = "-"; tags["CT21"] = "-"; tags["CT31"] = "-"; tags["CT41"] = "-";
