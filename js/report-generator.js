@@ -23,7 +23,7 @@ function formatVal(v) {
   if (s.toLowerCase() === "true") return "OK";
   if (s.toLowerCase() === "false") return "N/A";
 
-  // 2. Excel numeric serial date fallback (e.g. 45000 to 55000)
+  // 2. Excel numeric serial date fallback
   if (/^\d{5}$/.test(s)) {
     const num = parseInt(s, 10);
     if (num > 30000 && num < 60000) {
@@ -38,7 +38,6 @@ function formatVal(v) {
   return s;
 }
 
-// Random integer generator
 function randRange(min, max) {
   if (min > max) {
     const temp = min;
@@ -48,7 +47,6 @@ function randRange(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// Custom parser to treat tags verbatim (supports hyphens, underscores, spaces)
 function rawTagParser(tag) {
   const key = tag.trim();
   return {
@@ -59,7 +57,6 @@ function rawTagParser(tag) {
   };
 }
 
-// Render docx with double braces {{tag}}
 function renderDocx(templateBuffer, tags) {
   let zip;
   try {
@@ -91,7 +88,7 @@ function renderDocx(templateBuffer, tags) {
   }
 }
 
-// Function to generate a single CT Document exactly matching GenerateOneDocument in CTR_1.bas
+// CT Document Generation
 function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag, iCP, rowNameA, onLog) {
   const tags = Object.assign({}, generalTags, rowTags);
 
@@ -100,7 +97,6 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
   const ctS = tags['CT_S'] || '1';
   const noc = parseInt(tags['noc'] || '1', 10);
 
-  // CTR & CTR2 logic
   tags['CTR'] = ctP ? `${ctP}/${ctS}` : '';
   if (noc === 1) {
     tags['CTR2'] = '-';
@@ -110,7 +106,6 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
     tags['CTR2'] = '-';
   }
 
-  // Random measurements (Rp, Yp, Bp)
   let rngVal = parseInt(tags['range'] || '100', 10);
   if (isNaN(rngVal) || rngVal <= 0) rngVal = 100;
 
@@ -139,7 +134,6 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
     }
   }
 
-  // Primary injection calculation based on ctPrmTag ("CT_P" for pass 1, "CT_P2" for pass 2)
   const ctPrm = parseInt(tags[ctPrmTag] || '0', 10);
   if (!isNaN(ctPrm) && ctPrm > 0) {
     tags["CT1"] = String(Math.floor(ctPrm * 0.25));
@@ -147,13 +141,9 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
     tags["CT3"] = String(Math.floor(ctPrm * 0.75));
     tags["CT4"] = String(ctPrm);
   } else {
-    tags["CT1"] = "-";
-    tags["CT2"] = "-";
-    tags["CT3"] = "-";
-    tags["CT4"] = "-";
+    tags["CT1"] = "-"; tags["CT2"] = "-"; tags["CT3"] = "-"; tags["CT4"] = "-";
   }
 
-  // ApplyPRPSLogic: Case-insensitive check
   const prps = (tags['prps'] || '').trim().toUpperCase();
   const LP = noc * 2;
   let CP = 1;
@@ -161,11 +151,7 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
   if (prps === "METERING") {
     CP = 1;
     if (iCP) CP = CP + 1;
-
-    tags["CT11"] = tags["CT1"];
-    tags["CT21"] = tags["CT2"];
-    tags["CT31"] = tags["CT3"];
-    tags["CT41"] = tags["CT4"];
+    tags["CT11"] = tags["CT1"]; tags["CT21"] = tags["CT2"]; tags["CT31"] = tags["CT3"]; tags["CT41"] = tags["CT4"];
     tags["Rp11"] = "-"; tags["Rp21"] = "-"; tags["Rp31"] = "-"; tags["Rp41"] = "-";
     tags["Yp11"] = "-"; tags["Yp21"] = "-"; tags["Yp31"] = "-"; tags["Yp41"] = "-";
     tags["Bp11"] = "-"; tags["Bp21"] = "-"; tags["Bp31"] = "-"; tags["Bp41"] = "-";
@@ -173,26 +159,12 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
   } else if (prps === "PROTECTION") {
     CP = noc + 1;
     if (iCP) CP = CP + 1;
-
-    tags["CT11"] = "-";
-    tags["CT21"] = "-";
-    tags["CT31"] = "-";
-    tags["CT41"] = "-";
-    tags["Rp11"] = tags["Rp1"];
-    tags["Rp21"] = tags["Rp2"];
-    tags["Rp31"] = tags["Rp3"];
-    tags["Rp41"] = tags["Rp4"];
-    tags["Yp11"] = tags["Yp1"];
-    tags["Yp21"] = tags["Yp2"];
-    tags["Yp31"] = tags["Yp3"];
-    tags["Yp41"] = tags["Yp4"];
-    tags["Bp11"] = tags["Bp1"];
-    tags["Bp21"] = tags["Bp2"];
-    tags["Bp31"] = tags["Bp3"];
-    tags["Bp41"] = tags["Bp4"];
+    tags["CT11"] = "-"; tags["CT21"] = "-"; tags["CT31"] = "-"; tags["CT41"] = "-";
+    tags["Rp11"] = tags["Rp1"]; tags["Rp21"] = tags["Rp2"]; tags["Rp31"] = tags["Rp3"]; tags["Rp41"] = tags["Rp4"];
+    tags["Yp11"] = tags["Yp1"]; tags["Yp21"] = tags["Yp2"]; tags["Yp31"] = tags["Yp3"]; tags["Yp41"] = tags["Yp4"];
+    tags["Bp11"] = tags["Bp1"]; tags["Bp21"] = tags["Bp2"]; tags["Bp31"] = tags["Bp3"]; tags["Bp41"] = tags["Bp4"];
   }
 
-  // Sheet format: e.g. "1 OF 4", "2 OF 4"
   tags["sht"] = `${CP} OF ${LP}`;
 
   const outBytes = renderDocx(templateBytes, tags);
@@ -204,32 +176,50 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
   if (onLog) onLog(`- Created CT/${filename}`);
 }
 
-// Main orchestrator function called by app.js
-async function generateAllReports(parsedWorkbook, runMv, runCt, onLog) {
+// Master Orchestration Function
+async function generateAllReports(parsedWorkbook, options, onLog) {
+  // Pre-flight validation
+  if (!parsedWorkbook.Sheets['General']) {
+    throw new Error("Missing required 'General' sheet. Operation stopped.");
+  }
+
+  if (options.runMv && !parsedWorkbook.Sheets['MV_Panel']) {
+    throw new Error("Missing 'MV_Panel' sheet required for MV Panel Report.");
+  }
+  if (options.runCt && !parsedWorkbook.Sheets['CT']) {
+    throw new Error("Missing 'CT' sheet required for CT Report.");
+  }
+  if (options.runBbDlro && !parsedWorkbook.Sheets['BB_CR']) {
+    throw new Error("Missing 'BB_CR' sheet required for Busbar DLRO Report.");
+  }
+  if (options.runBbIr && !parsedWorkbook.Sheets['BB_IR']) {
+    throw new Error("Missing 'BB_IR' sheet required for Busbar IR & HiPot Report.");
+  }
+  if (options.runVt && !parsedWorkbook.Sheets['VT']) {
+    throw new Error("Missing 'VT' sheet required for VT Report.");
+  }
+
   const zipOut = new JSZip();
 
   // 1. General Tags
   const generalTags = {};
-  if (parsedWorkbook.Sheets['General']) {
-    const genData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['General'], { header: 1 });
-    if (genData.length >= 3) {
-      const tagRow = genData[1];
-      const valRow = genData[2];
-      for (let c = 0; c < tagRow.length; c++) {
-        const tag = String(tagRow[c] || '').trim();
-        if (tag) generalTags[tag] = formatVal(valRow[c]);
-      }
+  const genData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['General'], { header: 1 });
+  if (genData.length >= 3) {
+    const tagRow = genData[1];
+    const valRow = genData[2];
+    for (let c = 0; c < tagRow.length; c++) {
+      const tag = String(tagRow[c] || '').trim();
+      if (tag) generalTags[tag] = formatVal(valRow[c]);
     }
   }
 
   // 2. MV_Panel Processing
-  if (runMv && parsedWorkbook.Sheets['MV_Panel']) {
+  if (options.runMv) {
     onLog("Loading MVPanel.docx template...");
     const mvTemplate = await loadTemplate('./Templates/MVPanel.docx');
     onLog("Generating MV_Panel reports...");
 
     const mvData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['MV_Panel'], { header: 1 });
-    // Row 0 = Title, Row 1 = Tags, Data starts at Row 2 (Excel row 3)
     if (mvData.length >= 3) {
       const tagRow = mvData[1];
       const folder = zipOut.folder("MV_Panel");
@@ -237,8 +227,6 @@ async function generateAllReports(parsedWorkbook, runMv, runCt, onLog) {
       for (let r = 2; r < mvData.length; r++) {
         const row = mvData[r];
         if (!row || row.length === 0) continue;
-        
-        // Ensure there is actual data in the row (not empty row at the bottom)
         const rowName = String(row[1] || row[0] || '').trim();
         if (!rowName || rowName.toLowerCase() === 'cub') continue;
 
@@ -257,13 +245,12 @@ async function generateAllReports(parsedWorkbook, runMv, runCt, onLog) {
   }
 
   // 3. CT Processing
-  if (runCt && parsedWorkbook.Sheets['CT']) {
+  if (options.runCt) {
     onLog("Loading Ct1.docx template...");
     const ctTemplate = await loadTemplate('./Templates/Ct1.docx');
     onLog("Generating CT reports...");
 
     const ctData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['CT'], { header: 1 });
-    // Row 0 = Title, Row 1 = Tags, Data starts at Row 2 (Excel row 3)
     if (ctData.length >= 3) {
       const tagRow = ctData[1];
       const folder = zipOut.folder("CT");
@@ -271,8 +258,6 @@ async function generateAllReports(parsedWorkbook, runMv, runCt, onLog) {
       for (let r = 2; r < ctData.length; r++) {
         const row = ctData[r];
         if (!row || row.length === 0) continue;
-
-        // Skip blank rows or inadvertent tag rows
         const rowName = String(row[1] || row[0] || '').trim();
         if (!rowName || rowName.toLowerCase() === 'cub') continue;
 
@@ -282,18 +267,137 @@ async function generateAllReports(parsedWorkbook, runMv, runCt, onLog) {
           if (tag) baseRowTags[tag] = formatVal(row[c]);
         }
 
-        // If there's no Purpose specified in this row, skip
         if (!baseRowTags['prps']) continue;
-
         const noc = parseInt(baseRowTags['noc'] || '1', 10);
 
-        // Pass 1: CT_P (iCP = false)
         buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P", false, rowName, onLog);
-
-        // Pass 2: CT_P2 (iCP = true) only if noc == 2
         if (noc === 2) {
           buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P2", true, rowName, onLog);
         }
+      }
+    }
+  }
+
+  // 4. Busbar DLRO (BB_CR sheet -> Templates/BbDlro.docx -> BUSBAR folder)
+  if (options.runBbDlro) {
+    onLog("Loading BbDlro.docx template...");
+    const dlroTemplate = await loadTemplate('./Templates/BbDlro.docx');
+    onLog("Generating Busbar DLRO reports...");
+
+    const dlroData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['BB_CR'], { header: 1 });
+    if (dlroData.length >= 3) {
+      const tagRow = dlroData[1];
+      const folder = zipOut.folder("BUSBAR");
+
+      for (let r = 2; r < dlroData.length; r++) {
+        const row = dlroData[r];
+        if (!row || row.length === 0) continue;
+        const rowName = String(row[1] || row[0] || '').trim();
+        if (!rowName) continue;
+
+        const tags = Object.assign({}, generalTags);
+        for (let c = 0; c < tagRow.length; c++) {
+          const tag = String(tagRow[c] || '').trim();
+          if (tag) {
+            const raw = formatVal(row[c]);
+            tags[tag] = raw === "" ? "-" : raw;
+          }
+        }
+
+        // Get default rating from sheet/general tags (e.g. 400)
+        const ratingVal = tags['r_i'] || '';
+
+        // Dynamically check j1 to j11; blank out all fields from the first empty joint onward
+        let blankRemaining = false;
+        for (let j = 1; j <= 11; j++) {
+          const jKey = `j${j}`;
+          const val = tags[jKey];
+
+          if (blankRemaining || !val || val === "-" || val.trim() === "") {
+            blankRemaining = true;
+            tags[`j${j}`] = "";
+            tags[`r_i${j}`] = "";
+            tags[`r${j}`] = "";
+            tags[`y${j}`] = "";
+            tags[`b${j}`] = "";
+          } else {
+            // Assign specific row rating if available, or fall back to the general rating
+            tags[`r_i${j}`] = tags[`r_i${j}`] || ratingVal;
+          }
+        }
+
+        const outBytes = renderDocx(dlroTemplate, tags);
+        const fileName = rowName.replace(/\s+/g, '_');
+        folder.file(`${fileName}_DLRO.docx`, outBytes);
+        onLog(`- Created BUSBAR/${fileName}_DLRO.docx`);
+      }
+    }
+  }
+
+  // 5. Busbar IR & HiPot (BB_IR sheet -> Templates/BbIr.docx -> BUSBAR folder)
+  if (options.runBbIr) {
+    onLog("Loading BbIr.docx template...");
+    const irTemplate = await loadTemplate('./Templates/BbIr.docx');
+    onLog("Generating Busbar IR & HiPot reports...");
+
+    const irData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['BB_IR'], { header: 1 });
+    if (irData.length >= 3) {
+      const tagRow = irData[1];
+      const folder = zipOut.folder("BUSBAR");
+
+      for (let r = 2; r < irData.length; r++) {
+        const row = irData[r];
+        if (!row || row.length === 0) continue;
+        const rowName = String(row[1] || row[0] || '').trim();
+        if (!rowName) continue;
+
+        const tags = Object.assign({}, generalTags);
+        for (let c = 0; c < tagRow.length; c++) {
+          const tag = String(tagRow[c] || '').trim();
+          if (tag) {
+            const raw = formatVal(row[c]);
+            tags[tag] = raw === "" ? "-" : raw;
+          }
+        }
+
+        const outBytes = renderDocx(irTemplate, tags);
+        const fileName = rowName.replace(/\s+/g, '_');
+        folder.file(`${fileName}_IR.docx`, outBytes);
+        onLog(`- Created BUSBAR/${fileName}_IR.docx`);
+      }
+    }
+  }
+
+  // 6. VT Report (VT sheet -> Templates/Vt.docx -> VT folder)
+  if (options.runVt) {
+    onLog("Loading Vt.docx template...");
+    const vtTemplate = await loadTemplate('./Templates/Vt.docx');
+    onLog("Generating VT reports...");
+
+    const vtData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['VT'], { header: 1 });
+    if (vtData.length >= 3) {
+      const tagRow = vtData[1];
+      const folder = zipOut.folder("VT");
+
+      for (let r = 2; r < vtData.length; r++) {
+        const row = vtData[r];
+        if (!row || row.length === 0) continue;
+        const rowName = String(row[1] || row[0] || '').trim();
+        if (!rowName) continue;
+
+        const tags = Object.assign({}, generalTags);
+        for (let c = 0; c < tagRow.length; c++) {
+          const tag = String(tagRow[c] || '').trim();
+          if (tag) {
+            const raw = formatVal(row[c]);
+            tags[tag] = raw === "" ? "-" : raw;
+          }
+        }
+
+        const outBytes = renderDocx(vtTemplate, tags);
+        const fileName = rowName.replace(/\s+/g, '_');
+        folder.file(`${fileName}.docx`, outBytes);
+        onLog(`- Created VT/${fileName}.docx`);
       }
     }
   }

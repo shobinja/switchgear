@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-  // Service Worker for offline PWA functionality
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
@@ -10,21 +9,33 @@ document.addEventListener('DOMContentLoaded', () => {
   const processBtn = document.getElementById('processBtn');
   const logDiv = document.getElementById('log');
 
-  const chkMv = document.getElementById('chkMv');
-  const chkCt = document.getElementById('chkCt');
-  const lblMv = document.getElementById('lblMv');
-  const lblCt = document.getElementById('lblCt');
+  const checkboxes = {
+    mv: document.getElementById('chkMv'),
+    ct: document.getElementById('chkCt'),
+    bbDlro: document.getElementById('chkBbDlro'),
+    bbIr: document.getElementById('chkBbIr'),
+    vt: document.getElementById('chkVt')
+  };
+
+  const labels = {
+    mv: document.getElementById('lblMv'),
+    ct: document.getElementById('lblCt'),
+    bbDlro: document.getElementById('lblBbDlro'),
+    bbIr: document.getElementById('lblBbIr'),
+    vt: document.getElementById('lblVt')
+  };
 
   let selectedFile = null;
   let parsedWorkbook = null;
 
   function updateButtonState() {
-    const hasSelection = (chkMv.checked && !chkMv.disabled) || (chkCt.checked && !chkCt.disabled);
+    const hasSelection = Object.values(checkboxes).some(cb => cb.checked && !cb.disabled);
     processBtn.disabled = !selectedFile || !hasSelection;
   }
 
-  chkMv.addEventListener('change', updateButtonState);
-  chkCt.addEventListener('change', updateButtonState);
+  Object.values(checkboxes).forEach(cb => {
+    cb.addEventListener('change', updateButtonState);
+  });
 
   async function handleFile(f) {
     selectedFile = f;
@@ -36,22 +47,26 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await selectedFile.arrayBuffer();
       parsedWorkbook = XLSX.read(data, { type: 'array', cellDates: true });
 
-      const hasMv = !!parsedWorkbook.Sheets['MV_Panel'];
-      const hasCt = !!parsedWorkbook.Sheets['CT'];
+      // Enable/disable based on available sheets, but keep all unchecked by default
+      const sheetAvailability = {
+        mv: !!parsedWorkbook.Sheets['MV_Panel'],
+        ct: !!parsedWorkbook.Sheets['CT'],
+        bbDlro: !!parsedWorkbook.Sheets['BB_CR'],
+        bbIr: !!parsedWorkbook.Sheets['BB_IR'],
+        vt: !!parsedWorkbook.Sheets['VT']
+      };
 
-      chkMv.checked = hasMv;
-      chkMv.disabled = !hasMv;
-      lblMv.classList.toggle('disabled', !hasMv);
-      lblMv.title = hasMv ? "" : "MV_Panel sheet not found in workbook";
-
-      chkCt.checked = hasCt;
-      chkCt.disabled = !hasCt;
-      lblCt.classList.toggle('disabled', !hasCt);
-      lblCt.title = hasCt ? "" : "CT sheet not found in workbook";
+      for (const key in checkboxes) {
+        const available = sheetAvailability[key];
+        checkboxes[key].checked = false; // Always unchecked by default
+        checkboxes[key].disabled = !available;
+        labels[key].classList.toggle('disabled', !available);
+        labels[key].title = available ? "" : `Required sheet for this report is missing in workbook`;
+      }
 
       updateButtonState();
     } catch (e) {
-      log("Error reading workbook structure: " + e.message);
+      log("Error reading workbook: " + e.message);
     }
   }
 
@@ -83,13 +98,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     processBtn.disabled = true;
     logDiv.textContent = '';
-    log("Processing reports...");
+    log("Validating sheets and processing...");
 
     try {
       const zipBlob = await generateAllReports(
         parsedWorkbook,
-        chkMv.checked,
-        chkCt.checked,
+        {
+          runMv: checkboxes.mv.checked,
+          runCt: checkboxes.ct.checked,
+          runBbDlro: checkboxes.bbDlro.checked,
+          runBbIr: checkboxes.bbIr.checked,
+          runVt: checkboxes.vt.checked
+        },
         log
       );
 
