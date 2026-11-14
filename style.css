@@ -32,15 +32,22 @@ p {
 .dropzone {
   border: 2px dashed #cbd5e1;
   border-radius: 8px;
-  padding: 28px;
+  width: 100%;
+  aspect-ratio: 2 / 1; /* Height will always be exactly 50% of its width */
+  box-sizing: border-box;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   cursor: pointer;
   margin: 20px 0;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
 .dropzone:hover {
   border-color: #2563eb;
+  background-color: #f8fafc;
 }
 
 input[type="file"] {
