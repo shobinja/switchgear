@@ -1,4 +1,4 @@
-const CACHE_NAME = 'reportgen-v4';
+const CACHE_NAME = 'reportgen-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const ASSETS = [
   './Templates/BbDlro.docx',
   './Templates/BbIr.docx',
   './Templates/Vt.docx',
+  './Templates/Relay.docx',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
   'https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js',
   'https://cdn.jsdelivr.net/npm/docxtemplater@3.49.1/build/docxtemplater.js',

@@ -14,7 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ct: document.getElementById('chkCt'),
     bbDlro: document.getElementById('chkBbDlro'),
     bbIr: document.getElementById('chkBbIr'),
-    vt: document.getElementById('chkVt')
+    vt: document.getElementById('chkVt'),
+    relay: document.getElementById('chkRelay')
   };
 
   const labels = {
@@ -22,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ct: document.getElementById('lblCt'),
     bbDlro: document.getElementById('lblBbDlro'),
     bbIr: document.getElementById('lblBbIr'),
-    vt: document.getElementById('lblVt')
+    vt: document.getElementById('lblVt'),
+    relay: document.getElementById('lblRelay')
   };
 
   let selectedFile = null;
@@ -47,13 +49,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await selectedFile.arrayBuffer();
       parsedWorkbook = XLSX.read(data, { type: 'array', cellDates: true });
 
-      // Enable/disable based on available sheets, but keep all unchecked by default
       const sheetAvailability = {
         mv: !!parsedWorkbook.Sheets['MV_Panel'],
         ct: !!parsedWorkbook.Sheets['CT'],
         bbDlro: !!parsedWorkbook.Sheets['BB_CR'],
         bbIr: !!parsedWorkbook.Sheets['BB_IR'],
-        vt: !!parsedWorkbook.Sheets['VT']
+        vt: !!parsedWorkbook.Sheets['VT'],
+        relay: !!parsedWorkbook.Sheets['Relay']
       };
 
       for (const key in checkboxes) {
@@ -108,7 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
           runCt: checkboxes.ct.checked,
           runBbDlro: checkboxes.bbDlro.checked,
           runBbIr: checkboxes.bbIr.checked,
-          runVt: checkboxes.vt.checked
+          runVt: checkboxes.vt.checked,
+          runRelay: checkboxes.relay.checked
         },
         log
       );

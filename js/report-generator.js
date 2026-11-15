@@ -11,7 +11,6 @@ async function loadTemplate(url) {
 function formatVal(v) {
   if (v === undefined || v === null) return "";
 
-  // 1. JavaScript Date object handling
   if (v instanceof Date && !isNaN(v.getTime())) {
     const d = String(v.getDate()).padStart(2, '0');
     const m = String(v.getMonth() + 1).padStart(2, '0');
@@ -23,7 +22,6 @@ function formatVal(v) {
   if (s.toLowerCase() === "true") return "OK";
   if (s.toLowerCase() === "false") return "N/A";
 
-  // 2. Excel numeric serial date fallback
   if (/^\d{5}$/.test(s)) {
     const num = parseInt(s, 10);
     if (num > 30000 && num < 60000) {
@@ -88,6 +86,40 @@ function renderDocx(templateBuffer, tags) {
   }
 }
 
+// IEC Relay Trip Time Formula
+function calculateTripTime(M, TMS, curv) {
+  const curveName = String(curv || '').toLowerCase().trim();
+  let K = 0.14;
+  let alpha = 0.02;
+
+  if (curveName.includes("standard inverse")) {
+    K = 0.14;
+    alpha = 0.02;
+  } else if (curveName.includes("very inverse")) {
+    K = 13.5;
+    alpha = 1.0;
+  } else if (curveName.includes("extremely inverse")) {
+    K = 80.0;
+    alpha = 2.0;
+  } else if (curveName.includes("long inverse") || curveName.includes("long-time inverse")) {
+    K = 120.0;
+    alpha = 1.0;
+  }
+
+  const denominator = Math.pow(M, alpha) - 1.0;
+  if (denominator <= 0) return 0;
+  return Number(((K * TMS) / denominator).toFixed(3));
+}
+
+// Relay Random Measurement (+/- ms variation)
+function generateRandomRelayValue(tripTimeSec) {
+  const tripTimeMs = tripTimeSec * 1000;
+  const minVal = tripTimeMs - 50;
+  const maxVal = tripTimeMs + 100;
+  const randomMs = minVal + Math.random() * (maxVal - minVal);
+  return (randomMs / 1000).toFixed(3);
+}
+
 // CT Document Generation
 function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag, iCP, rowNameA, onLog) {
   const tags = Object.assign({}, generalTags, rowTags);
@@ -150,7 +182,7 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
 
   if (prps === "METERING") {
     CP = 1;
-    if (iCP) CP = CP + 1;
+    if (iCP) CP += 1;
     tags["CT11"] = tags["CT1"]; tags["CT21"] = tags["CT2"]; tags["CT31"] = tags["CT3"]; tags["CT41"] = tags["CT4"];
     tags["Rp11"] = "-"; tags["Rp21"] = "-"; tags["Rp31"] = "-"; tags["Rp41"] = "-";
     tags["Yp11"] = "-"; tags["Yp21"] = "-"; tags["Yp31"] = "-"; tags["Yp41"] = "-";
@@ -158,7 +190,7 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
 
   } else if (prps === "PROTECTION") {
     CP = noc + 1;
-    if (iCP) CP = CP + 1;
+    if (iCP) CP += 1;
     tags["CT11"] = "-"; tags["CT21"] = "-"; tags["CT31"] = "-"; tags["CT41"] = "-";
     tags["Rp11"] = tags["Rp1"]; tags["Rp21"] = tags["Rp2"]; tags["Rp31"] = tags["Rp3"]; tags["Rp41"] = tags["Rp4"];
     tags["Yp11"] = tags["Yp1"]; tags["Yp21"] = tags["Yp2"]; tags["Yp31"] = tags["Yp3"]; tags["Yp41"] = tags["Yp4"];
@@ -182,7 +214,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
   if (!parsedWorkbook.Sheets['General']) {
     throw new Error("Missing required 'General' sheet. Operation stopped.");
   }
-
   if (options.runMv && !parsedWorkbook.Sheets['MV_Panel']) {
     throw new Error("Missing 'MV_Panel' sheet required for MV Panel Report.");
   }
@@ -197,6 +228,9 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
   }
   if (options.runVt && !parsedWorkbook.Sheets['VT']) {
     throw new Error("Missing 'VT' sheet required for VT Report.");
+  }
+  if (options.runRelay && !parsedWorkbook.Sheets['Relay']) {
+    throw new Error("Missing 'Relay' sheet required for Protection Relay Report.");
   }
 
   const zipOut = new JSZip();
@@ -278,7 +312,7 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
     }
   }
 
-  // 4. Busbar DLRO (BB_CR sheet -> Templates/BbDlro.docx -> BUSBAR folder)
+  // 4. Busbar DLRO
   if (options.runBbDlro) {
     onLog("Loading BbDlro.docx template...");
     const dlroTemplate = await loadTemplate('./Templates/BbDlro.docx');
@@ -304,10 +338,7 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
           }
         }
 
-        // Get default rating from sheet/general tags (e.g. 400)
         const ratingVal = tags['r_i'] || '';
-
-        // Dynamically check j1 to j11; blank out all fields from the first empty joint onward
         let blankRemaining = false;
         for (let j = 1; j <= 11; j++) {
           const jKey = `j${j}`;
@@ -321,7 +352,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
             tags[`y${j}`] = "";
             tags[`b${j}`] = "";
           } else {
-            // Assign specific row rating if available, or fall back to the general rating
             tags[`r_i${j}`] = tags[`r_i${j}`] || ratingVal;
           }
         }
@@ -334,7 +364,7 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
     }
   }
 
-  // 5. Busbar IR & HiPot (BB_IR sheet -> Templates/BbIr.docx -> BUSBAR folder)
+  // 5. Busbar IR & HiPot
   if (options.runBbIr) {
     onLog("Loading BbIr.docx template...");
     const irTemplate = await loadTemplate('./Templates/BbIr.docx');
@@ -368,7 +398,7 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
     }
   }
 
-  // 6. VT Report (VT sheet -> Templates/Vt.docx -> VT folder)
+  // 6. VT Report
   if (options.runVt) {
     onLog("Loading Vt.docx template...");
     const vtTemplate = await loadTemplate('./Templates/Vt.docx');
@@ -398,6 +428,81 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         const fileName = rowName.replace(/\s+/g, '_');
         folder.file(`${fileName}.docx`, outBytes);
         onLog(`- Created VT/${fileName}.docx`);
+      }
+    }
+  }
+
+  // 7. Protection Relay (Relay sheet -> Templates/Relay.docx -> RELAY folder)
+  if (options.runRelay) {
+    onLog("Loading Relay.docx template...");
+    const relayTemplate = await loadTemplate('./Templates/Relay.docx');
+    onLog("Generating Protection Relay reports...");
+
+    const relayData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['Relay'], { header: 1 });
+    if (relayData.length >= 3) {
+      const tagRow = relayData[1];
+      const folder = zipOut.folder("RELAY");
+
+      for (let r = 2; r < relayData.length; r++) {
+        const row = relayData[r];
+        if (!row || row.length === 0) continue;
+        const rowName = String(row[1] || row[0] || '').trim();
+        if (!rowName) continue;
+
+        const tags = Object.assign({}, generalTags);
+        for (let c = 0; c < tagRow.length; c++) {
+          const tag = String(tagRow[c] || '').trim();
+          if (tag) {
+            const raw = formatVal(row[c]);
+            tags[tag] = raw === "" ? "-" : raw;
+          }
+        }
+
+        // VTR logic: if vt tag is True -> "11 / √3 : 0.11 / √3", else "-"
+        const vtVal = String(tags['vt'] || '').toLowerCase().trim();
+        if (vtVal === "true" || vtVal === "ok") {
+          tags['VTR'] = "11 / √3 : 0.11 / √3";
+        } else {
+          tags['vtr'] = "-";
+        }
+
+        // Numerical relay parameters
+        const Ib = parseFloat(tags['Ib']) || 0;
+        const I = parseFloat(tags['I']) || 0;
+        const Ie = parseFloat(tags['Ie']) || 0;
+        const tms = parseFloat(tags['tms']) || 0;
+        const tmse = parseFloat(tags['tmse']) || 0;
+
+        const curv = tags['curv'] || '';
+        const curve = tags['curve'] || '';
+
+        // Calculate pickup currents
+        const Iss = Ib * I;
+        const Iso = Ib * Ie;
+        tags['Iss'] = Iss.toFixed(1);
+        tags['Iso'] = Iso.toFixed(1);
+
+        // Calculate trip times
+        const tripTime2 = calculateTripTime(2, tms, curv);
+        const tripTime2e = calculateTripTime(2, tmse, curve);
+        const tripTime5 = calculateTripTime(5, tms, curv);
+        const tripTime5e = calculateTripTime(5, tmse, curve);
+
+        // Measured variations at 2x and 5x
+        tags['2xIr'] = generateRandomRelayValue(tripTime2);
+        tags['2xIy'] = generateRandomRelayValue(tripTime2);
+        tags['2xIb'] = generateRandomRelayValue(tripTime2);
+        tags['2xIee'] = generateRandomRelayValue(tripTime2e);
+
+        tags['5xIr'] = generateRandomRelayValue(tripTime5);
+        tags['5xIy'] = generateRandomRelayValue(tripTime5);
+        tags['5xIb'] = generateRandomRelayValue(tripTime5);
+        tags['5xIee'] = generateRandomRelayValue(tripTime5e);
+
+        const outBytes = renderDocx(relayTemplate, tags);
+        const fileName = rowName.replace(/\s+/g, '_');
+        folder.file(`${fileName}.docx`, outBytes);
+        onLog(`- Created RELAY/${fileName}.docx`);
       }
     }
   }
