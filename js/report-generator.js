@@ -461,7 +461,7 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         // VTR logic: if vt tag is True -> "11 / √3 : 0.11 / √3", else "-"
         const vtVal = String(tags['vt'] || '').toLowerCase().trim();
         if (vtVal === "true" || vtVal === "ok") {
-          tags['VTR'] = "11 / √3 : 0.11 / √3";
+          tags['vtr'] = "11 / √3 : 0.11 / √3";
         } else {
           tags['vtr'] = "-";
         }
