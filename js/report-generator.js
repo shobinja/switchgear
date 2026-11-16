@@ -36,6 +36,15 @@ function formatVal(v) {
   return s;
 }
 
+// Discard forward slashes, backslashes, and invalid filesystem characters from filenames
+function sanitizeFilename(name) {
+  if (!name) return "Report";
+  return String(name)
+    .replace(/[\\\/:\*\?"<>\|]/g, '') // Remove slashes, colons, and illegal characters
+    .trim()
+    .replace(/\s+/g, '_');
+}
+
 function randRange(min, max) {
   if (min > max) {
     const temp = min;
@@ -121,7 +130,7 @@ function generateRandomRelayValue(tripTimeSec) {
 }
 
 // CT Document Generation
-function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag, iCP, rowNameA, onLog) {
+function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag, iCP, cubicleName, onLog) {
   const tags = Object.assign({}, generalTags, rowTags);
 
   const ctP = tags['CT_P'] || '';
@@ -201,7 +210,7 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
 
   const outBytes = renderDocx(templateBytes, tags);
   const shtNo = String(tags["sht"]).replace(/\s+/g, '');
-  const cleanName = rowNameA.replace(/\s+/g, '_');
+  const cleanName = sanitizeFilename(cubicleName);
   const filename = `${cleanName}_${shtNo}.docx`;
 
   folder.file(filename, outBytes);
@@ -210,7 +219,7 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
 
 // Master Orchestration Function
 async function generateAllReports(parsedWorkbook, options, onLog) {
-  // Pre-flight validation
+  // Pre-flight sheet checks
   if (!parsedWorkbook.Sheets['General']) {
     throw new Error("Missing required 'General' sheet. Operation stopped.");
   }
@@ -233,6 +242,12 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
     throw new Error("Missing 'Relay' sheet required for Protection Relay Report.");
   }
 
+  // Pre-check for CT, VT, Relay needing cub_id lookup from MV_Panel
+  const needsCubLookup = options.runCt || options.runVt || options.runRelay;
+  if (needsCubLookup && !parsedWorkbook.Sheets['MV_Panel']) {
+    throw new Error("Missing 'MV_Panel' sheet. It is required to resolve panel descriptions.");
+  }
+
   const zipOut = new JSZip();
 
   // 1. General Tags
@@ -247,7 +262,41 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
     }
   }
 
-  // 2. MV_Panel Processing
+  // 2. Build cub_id -> cub Map from MV_Panel
+  const cubMap = {};
+  if (parsedWorkbook.Sheets['MV_Panel']) {
+    const mvData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['MV_Panel'], { header: 1 });
+    if (mvData.length >= 3) {
+      const tagRow = mvData[1];
+      const cubIdCol = tagRow.findIndex(t => String(t || '').trim().toLowerCase() === 'cub_id');
+      const cubCol = tagRow.findIndex(t => String(t || '').trim().toLowerCase() === 'cub');
+
+      for (let r = 2; r < mvData.length; r++) {
+        const row = mvData[r];
+        if (!row || row.length === 0) continue;
+        
+        const idVal = cubIdCol !== -1 ? String(row[cubIdCol] || '').trim() : '';
+        const cubVal = cubCol !== -1 ? String(row[cubCol] || '').trim() : '';
+
+        if (idVal && cubVal) {
+          cubMap[idVal] = cubVal;
+        }
+      }
+    }
+  }
+
+  // Helper function to resolve panel name from row tags
+  function resolveCubicle(rowTags) {
+    if (rowTags['cub_ref'] !== undefined && rowTags['cub_ref'] !== '') {
+      const refId = String(rowTags['cub_ref']).trim();
+      if (cubMap[refId]) {
+        return cubMap[refId];
+      }
+    }
+    return rowTags['cub'] || '';
+  }
+
+  // 3. MV_Panel Processing
   if (options.runMv) {
     onLog("Loading MVPanel.docx template...");
     const mvTemplate = await loadTemplate('./Templates/MVPanel.docx');
@@ -261,8 +310,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
       for (let r = 2; r < mvData.length; r++) {
         const row = mvData[r];
         if (!row || row.length === 0) continue;
-        const rowName = String(row[1] || row[0] || '').trim();
-        if (!rowName || rowName.toLowerCase() === 'cub') continue;
 
         const tags = Object.assign({}, generalTags);
         for (let c = 0; c < tagRow.length; c++) {
@@ -270,15 +317,18 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
           if (tag) tags[tag] = formatVal(row[c]);
         }
 
+        const cubName = tags['cub'] || '';
+        if (!cubName || cubName.toLowerCase() === 'cub') continue;
+
         const outBytes = renderDocx(mvTemplate, tags);
-        const fileName = rowName.replace(/\s+/g, '_');
+        const fileName = sanitizeFilename(cubName);
         folder.file(`${fileName}.docx`, outBytes);
         onLog(`- Created MV_Panel/${fileName}.docx`);
       }
     }
   }
 
-  // 3. CT Processing
+  // 4. CT Processing
   if (options.runCt) {
     onLog("Loading Ct1.docx template...");
     const ctTemplate = await loadTemplate('./Templates/Ct1.docx');
@@ -292,8 +342,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
       for (let r = 2; r < ctData.length; r++) {
         const row = ctData[r];
         if (!row || row.length === 0) continue;
-        const rowName = String(row[1] || row[0] || '').trim();
-        if (!rowName || rowName.toLowerCase() === 'cub') continue;
 
         const baseRowTags = {};
         for (let c = 0; c < tagRow.length; c++) {
@@ -302,17 +350,24 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         }
 
         if (!baseRowTags['prps']) continue;
+
+        // Resolve cubicle description using cub_ref -> cub
+        const resolvedCub = resolveCubicle(baseRowTags);
+        baseRowTags['cub'] = resolvedCub;
+
+        if (!resolvedCub || resolvedCub.toLowerCase() === 'cub') continue;
+
         const noc = parseInt(baseRowTags['noc'] || '1', 10);
 
-        buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P", false, rowName, onLog);
+        buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P", false, resolvedCub, onLog);
         if (noc === 2) {
-          buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P2", true, rowName, onLog);
+          buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P2", true, resolvedCub, onLog);
         }
       }
     }
   }
 
-  // 4. Busbar DLRO
+  // 5. Busbar DLRO (BB_CR sheet)
   if (options.runBbDlro) {
     onLog("Loading BbDlro.docx template...");
     const dlroTemplate = await loadTemplate('./Templates/BbDlro.docx');
@@ -357,14 +412,14 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         }
 
         const outBytes = renderDocx(dlroTemplate, tags);
-        const fileName = rowName.replace(/\s+/g, '_');
+        const fileName = sanitizeFilename(rowName);
         folder.file(`${fileName}_DLRO.docx`, outBytes);
         onLog(`- Created BUSBAR/${fileName}_DLRO.docx`);
       }
     }
   }
 
-  // 5. Busbar IR & HiPot
+  // 6. Busbar IR & HiPot (BB_IR sheet)
   if (options.runBbIr) {
     onLog("Loading BbIr.docx template...");
     const irTemplate = await loadTemplate('./Templates/BbIr.docx');
@@ -391,14 +446,14 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         }
 
         const outBytes = renderDocx(irTemplate, tags);
-        const fileName = rowName.replace(/\s+/g, '_');
+        const fileName = sanitizeFilename(rowName);
         folder.file(`${fileName}_IR.docx`, outBytes);
         onLog(`- Created BUSBAR/${fileName}_IR.docx`);
       }
     }
   }
 
-  // 6. VT Report
+  // 7. VT Report
   if (options.runVt) {
     onLog("Loading Vt.docx template...");
     const vtTemplate = await loadTemplate('./Templates/Vt.docx');
@@ -412,8 +467,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
       for (let r = 2; r < vtData.length; r++) {
         const row = vtData[r];
         if (!row || row.length === 0) continue;
-        const rowName = String(row[1] || row[0] || '').trim();
-        if (!rowName) continue;
 
         const tags = Object.assign({}, generalTags);
         for (let c = 0; c < tagRow.length; c++) {
@@ -424,15 +477,21 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
           }
         }
 
+        // Resolve cubicle description using cub_ref -> cub
+        const resolvedCub = resolveCubicle(tags);
+        tags['cub'] = resolvedCub;
+
+        if (!resolvedCub || resolvedCub.toLowerCase() === 'cub') continue;
+
         const outBytes = renderDocx(vtTemplate, tags);
-        const fileName = rowName.replace(/\s+/g, '_');
+        const fileName = sanitizeFilename(resolvedCub);
         folder.file(`${fileName}.docx`, outBytes);
         onLog(`- Created VT/${fileName}.docx`);
       }
     }
   }
 
-  // 7. Protection Relay (Relay sheet -> Templates/Relay.docx -> RELAY folder)
+  // 8. Protection Relay
   if (options.runRelay) {
     onLog("Loading Relay.docx template...");
     const relayTemplate = await loadTemplate('./Templates/Relay.docx');
@@ -446,8 +505,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
       for (let r = 2; r < relayData.length; r++) {
         const row = relayData[r];
         if (!row || row.length === 0) continue;
-        const rowName = String(row[1] || row[0] || '').trim();
-        if (!rowName) continue;
 
         const tags = Object.assign({}, generalTags);
         for (let c = 0; c < tagRow.length; c++) {
@@ -458,12 +515,18 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
           }
         }
 
+        // Resolve cubicle description using cub_ref -> cub
+        const resolvedCub = resolveCubicle(tags);
+        tags['cub'] = resolvedCub;
+
+        if (!resolvedCub || resolvedCub.toLowerCase() === 'cub') continue;
+
         // VTR logic: if vt tag is True -> "11 / √3 : 0.11 / √3", else "-"
         const vtVal = String(tags['vt'] || '').toLowerCase().trim();
         if (vtVal === "true" || vtVal === "ok") {
-          tags['vtr'] = "11 / √3 : 0.11 / √3";
+          tags['VTR'] = "11 / √3 : 0.11 / √3";
         } else {
-          tags['vtr'] = "-";
+          tags['VTR'] = "-";
         }
 
         // Numerical relay parameters
@@ -500,7 +563,7 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         tags['5xIee'] = generateRandomRelayValue(tripTime5e);
 
         const outBytes = renderDocx(relayTemplate, tags);
-        const fileName = rowName.replace(/\s+/g, '_');
+        const fileName = sanitizeFilename(resolvedCub);
         folder.file(`${fileName}.docx`, outBytes);
         onLog(`- Created RELAY/${fileName}.docx`);
       }
