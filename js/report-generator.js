@@ -327,7 +327,7 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
 
         const acChk = String(tags['ac_chk'] || '').toLowerCase().trim();
         tags['ac'] = (acChk === 'true' || acChk === 'ok') 
-          ? (generalTags['a_ac'] || tags['a_ac'] || '')  + ' V DC'
+          ? (generalTags['a_ac'] || tags['a_ac'] || '')  + ' V AC'
           : 'N/A';
 
         const dcChk = String(tags['dc_chk'] || '').toLowerCase().trim();
