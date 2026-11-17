@@ -1,8 +1,9 @@
-const CACHE_NAME = 'reportgen-v5';
+const CACHE_NAME = 'reportgen-v6';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
+  './logo.png',
   './js/report-generator.js',
   './js/app.js',
   './manifest.json',

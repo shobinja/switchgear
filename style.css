@@ -130,3 +130,26 @@ button:disabled {
   white-space: pre-wrap;
   display: none;
 }
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.brand-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.header-brand h2 {
+  margin: 0 0 4px 0;
+}
+
+.header-brand p {
+  margin: 0;
+}

@@ -4,7 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Switchgear Report Generator</title>
+
+  <!-- PWA & Browser Icons -->
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="./logo.png" />
+  <link rel="apple-touch-icon" href="./logo.png" />
+
   <link rel="stylesheet" href="style.css" />
 
   <!-- External Libraries -->
@@ -21,8 +26,13 @@
 <body>
 
   <div class="card">
-    <h2>Switchgear Test Report Generator</h2>
-    <p>Upload your Excel workbook and select the reports you want to generate.</p>
+    <div class="header-brand">
+      <img src="./logo.png" alt="Switchgear Logo" class="brand-logo" />
+      <div>
+        <h2>Switchgear Test Report Generator</h2>
+        <p>Upload your Excel workbook and select the reports you want to generate.</p>
+      </div>
+    </div>
 
     <div class="dropzone" id="dropArea">
       <span id="fileLabel">📁 Click to select or drop .xlsx/.xlsm file here</span>
