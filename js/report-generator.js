@@ -40,7 +40,7 @@ function formatVal(v) {
 function sanitizeFilename(name) {
   if (!name) return "Report";
   return String(name)
-    .replace(/[\\\/:\*\?"<>\|]/g, '') // Remove slashes, colons, and illegal characters
+    .replace(/[\\\/:\*\?"<>\|]/g, '')
     .trim()
     .replace(/\s+/g, '_');
 }
@@ -242,10 +242,9 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
     throw new Error("Missing 'Relay' sheet required for Protection Relay Report.");
   }
 
-  // Pre-check for CT, VT, Relay needing cub_id lookup from MV_Panel
   const needsCubLookup = options.runCt || options.runVt || options.runRelay;
   if (needsCubLookup && !parsedWorkbook.Sheets['MV_Panel']) {
-    throw new Error("Missing 'MV_Panel' sheet. It is required to resolve panel descriptions.");
+    throw new Error("Missing 'MV_Panel' sheet. It is required to resolve 'cub_ref' panel descriptions.");
   }
 
   const zipOut = new JSZip();
@@ -285,7 +284,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
     }
   }
 
-  // Helper function to resolve panel name from row tags
   function resolveCubicle(rowTags) {
     if (rowTags['cub_ref'] !== undefined && rowTags['cub_ref'] !== '') {
       const refId = String(rowTags['cub_ref']).trim();
@@ -320,6 +318,23 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         const cubName = tags['cub'] || '';
         if (!cubName || cubName.toLowerCase() === 'cub') continue;
 
+        // Custom Checkbox Conditionals for MV_Panel
+        const irDcChk = String(tags['ir_dc_chk'] || '').toLowerCase().trim();
+        tags['ir_dc'] = (irDcChk === 'true' || irDcChk === 'ok') ? '>1000 MΩ' : 'N/A';
+
+        const irLgtChk = String(tags['ir_lgt_chk'] || '').toLowerCase().trim();
+        tags['ir_lgt'] = (irLgtChk === 'true' || irLgtChk === 'ok') ? '>1000 MΩ' : 'N/A';
+
+        const acChk = String(tags['ac_chk'] || '').toLowerCase().trim();
+        tags['ac'] = (acChk === 'true' || acChk === 'ok') 
+          ? (generalTags['a_ac'] || tags['a_ac'] || '')  + ' V DC'
+          : 'N/A';
+
+        const dcChk = String(tags['dc_chk'] || '').toLowerCase().trim();
+        tags['dc'] = (dcChk === 'true' || dcChk === 'ok') 
+          ? (generalTags['a_dc'] || tags['a_dc'] || '')  + ' V DC'
+          : 'N/A';
+
         const outBytes = renderDocx(mvTemplate, tags);
         const fileName = sanitizeFilename(cubName);
         folder.file(`${fileName}.docx`, outBytes);
@@ -351,7 +366,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
 
         if (!baseRowTags['prps']) continue;
 
-        // Resolve cubicle description using cub_ref -> cub
         const resolvedCub = resolveCubicle(baseRowTags);
         baseRowTags['cub'] = resolvedCub;
 
@@ -477,7 +491,6 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
           }
         }
 
-        // Resolve cubicle description using cub_ref -> cub
         const resolvedCub = resolveCubicle(tags);
         tags['cub'] = resolvedCub;
 
@@ -515,13 +528,12 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
           }
         }
 
-        // Resolve cubicle description using cub_ref -> cub
         const resolvedCub = resolveCubicle(tags);
         tags['cub'] = resolvedCub;
 
         if (!resolvedCub || resolvedCub.toLowerCase() === 'cub') continue;
 
-        // VTR logic: if vt tag is True -> "11 / √3 : 0.11 / √3", else "-"
+        // VTR logic
         const vtVal = String(tags['vt'] || '').toLowerCase().trim();
         if (vtVal === "true" || vtVal === "ok") {
           tags['VTR'] = "11 / √3 : 0.11 / √3";
