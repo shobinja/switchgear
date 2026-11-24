@@ -40,7 +40,7 @@ function formatVal(v) {
 function sanitizeFilename(name) {
   if (!name) return "Report";
   return String(name)
-    .replace(/[\\\/:\*\?"<>\|]/g, '')
+    .replace(/[\\\/:\*\?"<>\|,]/g, '') // Strips \ / : * ? " < > | and ,
     .trim()
     .replace(/\s+/g, '_');
 }
@@ -135,7 +135,7 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
 
   const ctP = tags['CT_P'] || '';
   const ctP2 = tags['CT_P2'] || '';
-  const ctS = tags['CT_S'] || '1';
+  const ctS = String(tags['CT_S'] || '1').trim();
   const noc = parseInt(tags['noc'] || '1', 10);
 
   tags['CTR'] = ctP ? `${ctP}/${ctS}` : '';
@@ -147,18 +147,31 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
     tags['CTR2'] = '-';
   }
 
+  // Handle cor / cor2 logic:
+  // On pass 2 (iCP === true), assign cor = cor2 if provided; pass 1 keeps original cor
+  if (iCP) {
+    if (tags['cor2'] !== undefined && tags['cor2'] !== "") {
+      tags['cor'] = tags['cor2'];
+    }
+  }
+
   let rngVal = parseInt(tags['range'] || '100', 10);
   if (isNaN(rngVal) || rngVal <= 0) rngVal = 100;
 
-  const centers = [2500, 5000, 7500, 10000];
+  // Determine configuration based on CT_S (5 steps vs 4 steps)
+  const isCt5 = ctS === '5';
+  const centers = isCt5 
+    ? [10000, 20000, 30000, 40000, 50000] 
+    : [2500, 5000, 7500, 10000];
+  const steps = centers.length;
   const prefixes = ["Rp", "Yp", "Bp"];
 
-  for (let j = 0; j < 4; j++) {
+  for (let j = 0; j < steps; j++) {
     const base = centers[j];
     const minVal = base - rngVal;
     const maxVal = base + Math.floor(rngVal / 2);
 
-    for (let p = 0; p < 3; p++) {
+    for (let p = 0; p < prefixes.length; p++) {
       let strVal = "";
       let attempts = 0;
       do {
@@ -175,14 +188,24 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
     }
   }
 
+  // Primary CT calculated steps
   const ctPrm = parseInt(tags[ctPrmTag] || '0', 10);
   if (!isNaN(ctPrm) && ctPrm > 0) {
-    tags["CT1"] = String(Math.floor(ctPrm * 0.25));
-    tags["CT2"] = String(Math.floor(ctPrm * 0.5));
-    tags["CT3"] = String(Math.floor(ctPrm * 0.75));
-    tags["CT4"] = String(ctPrm);
+    if (isCt5) {
+      tags["CT1"] = String(Math.floor(ctPrm * 0.2));
+      tags["CT2"] = String(Math.floor(ctPrm * 0.4));
+      tags["CT3"] = String(Math.floor(ctPrm * 0.6));
+      tags["CT4"] = String(Math.floor(ctPrm * 0.8));
+      tags["CT5"] = String(ctPrm);
+    } else {
+      tags["CT1"] = String(Math.floor(ctPrm * 0.25));
+      tags["CT2"] = String(Math.floor(ctPrm * 0.5));
+      tags["CT3"] = String(Math.floor(ctPrm * 0.75));
+      tags["CT4"] = String(ctPrm);
+    }
   } else {
     tags["CT1"] = "-"; tags["CT2"] = "-"; tags["CT3"] = "-"; tags["CT4"] = "-";
+    if (isCt5) tags["CT5"] = "-";
   }
 
   const prps = (tags['prps'] || '').trim().toUpperCase();
@@ -192,18 +215,35 @@ function buildSingleCTDoc(folder, templateBytes, generalTags, rowTags, ctPrmTag,
   if (prps === "METERING") {
     CP = 1;
     if (iCP) CP += 1;
-    tags["CT11"] = tags["CT1"]; tags["CT21"] = tags["CT2"]; tags["CT31"] = tags["CT3"]; tags["CT41"] = tags["CT4"];
+
+    tags["CT11"] = tags["CT1"]; tags["CT21"] = tags["CT2"];
+    tags["CT31"] = tags["CT3"]; tags["CT41"] = tags["CT4"];
     tags["Rp11"] = "-"; tags["Rp21"] = "-"; tags["Rp31"] = "-"; tags["Rp41"] = "-";
     tags["Yp11"] = "-"; tags["Yp21"] = "-"; tags["Yp31"] = "-"; tags["Yp41"] = "-";
     tags["Bp11"] = "-"; tags["Bp21"] = "-"; tags["Bp31"] = "-"; tags["Bp41"] = "-";
 
+    if (isCt5) {
+      tags["CT51"] = tags["CT5"];
+      tags["Rp51"] = "-";
+      tags["Yp51"] = "-";
+      tags["Bp51"] = "-";
+    }
+
   } else if (prps === "PROTECTION") {
     CP = noc + 1;
     if (iCP) CP += 1;
+
     tags["CT11"] = "-"; tags["CT21"] = "-"; tags["CT31"] = "-"; tags["CT41"] = "-";
     tags["Rp11"] = tags["Rp1"]; tags["Rp21"] = tags["Rp2"]; tags["Rp31"] = tags["Rp3"]; tags["Rp41"] = tags["Rp4"];
     tags["Yp11"] = tags["Yp1"]; tags["Yp21"] = tags["Yp2"]; tags["Yp31"] = tags["Yp3"]; tags["Yp41"] = tags["Yp4"];
     tags["Bp11"] = tags["Bp1"]; tags["Bp21"] = tags["Bp2"]; tags["Bp31"] = tags["Bp3"]; tags["Bp41"] = tags["Bp4"];
+
+    if (isCt5) {
+      tags["CT51"] = "-";
+      tags["Rp51"] = tags["Rp5"];
+      tags["Yp51"] = tags["Yp5"];
+      tags["Bp51"] = tags["Bp5"];
+    }
   }
 
   tags["sht"] = `${CP} OF ${LP}`;
@@ -345,8 +385,11 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
 
   // 4. CT Processing
   if (options.runCt) {
-    onLog("Loading Ct1.docx template...");
-    const ctTemplate = await loadTemplate('./Templates/Ct1.docx');
+    onLog("Loading Ct1.docx and Ct5.docx templates...");
+    const [ct1Template, ct5Template] = await Promise.all([
+      loadTemplate('./Templates/Ct1.docx'),
+      loadTemplate('./Templates/Ct5.docx')
+    ]);
     onLog("Generating CT reports...");
 
     const ctData = XLSX.utils.sheet_to_json(parsedWorkbook.Sheets['CT'], { header: 1 });
@@ -372,10 +415,14 @@ async function generateAllReports(parsedWorkbook, options, onLog) {
         if (!resolvedCub || resolvedCub.toLowerCase() === 'cub') continue;
 
         const noc = parseInt(baseRowTags['noc'] || '1', 10);
+        const ctSVal = String(baseRowTags['CT_S'] || '1').trim();
 
-        buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P", false, resolvedCub, onLog);
+        // Select template buffer based on CT_S
+        const selectedCtTemplate = (ctSVal === '5') ? ct5Template : ct1Template;
+
+        buildSingleCTDoc(folder, selectedCtTemplate, generalTags, baseRowTags, "CT_P", false, resolvedCub, onLog);
         if (noc === 2) {
-          buildSingleCTDoc(folder, ctTemplate, generalTags, baseRowTags, "CT_P2", true, resolvedCub, onLog);
+          buildSingleCTDoc(folder, selectedCtTemplate, generalTags, baseRowTags, "CT_P2", true, resolvedCub, onLog);
         }
       }
     }
